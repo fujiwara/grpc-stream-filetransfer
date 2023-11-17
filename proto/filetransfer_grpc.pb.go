@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 type FileTransferServiceClient interface {
 	Upload(ctx context.Context, opts ...grpc.CallOption) (FileTransferService_UploadClient, error)
 	Download(ctx context.Context, in *FileDownloadRequest, opts ...grpc.CallOption) (FileTransferService_DownloadClient, error)
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 }
 
 type fileTransferServiceClient struct {
@@ -100,12 +101,22 @@ func (x *fileTransferServiceDownloadClient) Recv() (*FileDownloadResponse, error
 	return m, nil
 }
 
+func (c *fileTransferServiceClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, "/grpcp.FileTransferService/Ping", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FileTransferServiceServer is the server API for FileTransferService service.
 // All implementations must embed UnimplementedFileTransferServiceServer
 // for forward compatibility
 type FileTransferServiceServer interface {
 	Upload(FileTransferService_UploadServer) error
 	Download(*FileDownloadRequest, FileTransferService_DownloadServer) error
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	mustEmbedUnimplementedFileTransferServiceServer()
 }
 
@@ -118,6 +129,9 @@ func (UnimplementedFileTransferServiceServer) Upload(FileTransferService_UploadS
 }
 func (UnimplementedFileTransferServiceServer) Download(*FileDownloadRequest, FileTransferService_DownloadServer) error {
 	return status.Errorf(codes.Unimplemented, "method Download not implemented")
+}
+func (UnimplementedFileTransferServiceServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
 func (UnimplementedFileTransferServiceServer) mustEmbedUnimplementedFileTransferServiceServer() {}
 
@@ -179,13 +193,36 @@ func (x *fileTransferServiceDownloadServer) Send(m *FileDownloadResponse) error 
 	return x.ServerStream.SendMsg(m)
 }
 
+func _FileTransferService_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileTransferServiceServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/grpcp.FileTransferService/Ping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileTransferServiceServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FileTransferService_ServiceDesc is the grpc.ServiceDesc for FileTransferService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var FileTransferService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "grpcp.FileTransferService",
 	HandlerType: (*FileTransferServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    _FileTransferService_Ping_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Upload",

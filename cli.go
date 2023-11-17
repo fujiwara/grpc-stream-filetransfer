@@ -43,7 +43,7 @@ func RunCLI(ctx context.Context) error {
 			Quiet: cli.Quiet,
 		}
 		clinet := NewClient(opt)
-		return clinet.Run(ctx, cli.Src, cli.Dest)
+		return clinet.Copy(ctx, cli.Src, cli.Dest)
 	} else {
 		return fmt.Errorf("expected: grpcp <src> <dest> or grpcp --server")
 	}

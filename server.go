@@ -17,9 +17,14 @@ type server struct {
 	pb.UnimplementedFileTransferServiceServer
 }
 
-const (
+var (
 	StreamBufferSize = 1024 * 1024
 )
+
+func (s *server) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+	log.Printf("[info] ping message: %s", req.Message)
+	return &pb.PingResponse{Message: "pong"}, nil
+}
 
 func newUploadResponse(msg string) *pb.FileUploadResponse {
 	return &pb.FileUploadResponse{Message: msg}
@@ -40,7 +45,7 @@ func (s *server) upload(stream pb.FileTransferService_UploadServer) error {
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
-			log.Printf("[info] upload completed (%d bytes)", totalBytes)
+			log.Printf("[info] server upload completed (%d bytes)", totalBytes)
 			if totalBytes != expectedSize {
 				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", expectedSize, totalBytes)
 			}
@@ -87,7 +92,7 @@ func (s *server) download(req *pb.FileDownloadRequest, stream pb.FileTransferSer
 	for {
 		n, err := f.Read(buf)
 		if err == io.EOF {
-			log.Printf("[info] download completed (%d bytes)", totalBytes)
+			log.Printf("[info] server download completed (%d bytes)", totalBytes)
 			if totalBytes != expectedBytes {
 				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", expectedBytes, totalBytes)
 			}

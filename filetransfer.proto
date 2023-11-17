@@ -8,6 +8,8 @@ service FileTransferService {
     rpc Upload(stream FileUploadRequest) returns (FileUploadResponse);
 
     rpc Download(FileDownloadRequest) returns (stream FileDownloadResponse);
+
+    rpc Ping(PingRequest) returns (PingResponse);
 }
 
 message FileUploadRequest {

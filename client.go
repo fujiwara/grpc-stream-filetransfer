@@ -49,7 +49,7 @@ func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remote
 	for {
 		n, err := file.Read(buf)
 		if err == io.EOF {
-			log.Printf("[info] upload completed (%d bytes)", totalBytes)
+			log.Printf("[info] client upload completed (%d bytes)", totalBytes)
 			if totalBytes != expectedBytes {
 				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", st.Size(), totalBytes)
 			}
@@ -105,7 +105,7 @@ func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remo
 	for {
 		res, err := stream.Recv()
 		if err == io.EOF {
-			log.Printf("[info] download completed (%d bytes)", totalBytes)
+			log.Printf("[info] client download completed (%d bytes)", totalBytes)
 			if totalBytes != expectedBytes {
 				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", expectedBytes, totalBytes)
 			}
@@ -142,7 +142,20 @@ func NewClient(opt *ClientOption) *Client {
 	}
 }
 
-func (c *Client) Run(ctx context.Context, src, dest string) error {
+func (c *Client) Ping(ctx context.Context, host string) (*pb.PingResponse, error) {
+	addr := fmt.Sprintf("%s:%d", host, c.Option.Port)
+	conn, err := grpc.DialContext(ctx, addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial server: %w", err)
+	}
+	defer conn.Close()
+	client := pb.NewFileTransferServiceClient(conn)
+	return client.Ping(ctx, &pb.PingRequest{Message: "ping"})
+}
+
+func (c *Client) Copy(ctx context.Context, src, dest string) error {
 	var transfer transferFunc
 	var remoteHost, remoteFile, localFile string
 
@@ -168,15 +181,15 @@ func (c *Client) Run(ctx context.Context, src, dest string) error {
 	}
 
 	addr := fmt.Sprintf("%s:%d", remoteHost, c.Option.Port)
-	conn, err := grpc.Dial(addr,
+	conn, err := grpc.DialContext(ctx, addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to dial server: %w", err)
 	}
+	log.Printf("[info] connected to %s", addr)
 	defer conn.Close()
 	client := pb.NewFileTransferServiceClient(conn)
-	log.Printf("[info] connected to %s", addr)
 
 	return transfer(ctx, client, remoteFile, localFile, c.Option)
 }
