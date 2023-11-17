@@ -38,6 +38,10 @@ Copy a file from the local host to the remote host:
 $ grpcp /path/to/file remote_host:/path/to/destination
 ```
 
+## TODO
+
+- Use TLS encryption for the connection
+
 ## LICENSE
 
 MIT
