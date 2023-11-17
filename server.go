@@ -1,6 +1,8 @@
 package filetransfer
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -24,11 +26,12 @@ func (s *server) Upload(stream pb.FileTransferService_UploadServer) error {
 			f.Close()
 		}
 	}()
+	var totalBytes int
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
 			// ファイル受信完了
-			log.Printf("EOF")
+			log.Printf("upload completed (%d bytes)", totalBytes)
 			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Upload received successfully"})
 		} else if err != nil {
 			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Failed to receive file"})
@@ -44,9 +47,11 @@ func (s *server) Upload(stream pb.FileTransferService_UploadServer) error {
 			log.Printf("Failed to open file: %s", err)
 			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Failed to open file"})
 		}
-		if _, err := f.Write(req.Content); err != nil {
+		if n, err := f.Write(req.Content); err != nil {
 			log.Printf("Failed to write file: %s", err)
 			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Failed to write file"})
+		} else {
+			totalBytes += n
 		}
 	}
 }
@@ -86,8 +91,8 @@ func (s *server) Download(req *pb.FileDownloadRequest, stream pb.FileTransferSer
 	return nil
 }
 
-func RunServer() {
-	lis, err := net.Listen("tcp", ":5000")
+func RunServer(ctx context.Context, opt *Option) {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", opt.Port))
 	if err != nil {
 		log.Fatalf("Failed to listen: %v", err)
 	}

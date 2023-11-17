@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -8,11 +9,14 @@ import (
 )
 
 func main() {
+	// TODO flag parser
 	if len(os.Args) != 3 {
 		log.Println("Usage: client <srcfile> <destfile>")
 		os.Exit(1)
 	}
-	if err := filetransfer.RunClient(os.Args[1], os.Args[2]); err != nil {
+	opt := filetransfer.NewDefaultOption()
+	client := filetransfer.NewClient(opt)
+	if err := client.Run(context.Background(), os.Args[1], os.Args[2]); err != nil {
 		log.Fatal(err)
 	}
 }

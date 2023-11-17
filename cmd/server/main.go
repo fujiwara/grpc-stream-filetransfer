@@ -1,7 +1,13 @@
 package main
 
-import filetransfer "github.com/fujiwara/grpc-stream-filetransfer"
+import (
+	"context"
+
+	filetransfer "github.com/fujiwara/grpc-stream-filetransfer"
+)
 
 func main() {
-	filetransfer.RunServer()
+	// TODO flag parser
+	opt := filetransfer.NewDefaultOption()
+	filetransfer.RunServer(context.Background(), opt)
 }

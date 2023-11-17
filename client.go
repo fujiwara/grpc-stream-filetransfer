@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func uploadFile(client pb.FileTransferServiceClient, remoteFile, localFile string) error {
+func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remoteFile, localFile string) error {
 	file, err := os.Open(localFile)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -27,7 +27,7 @@ func uploadFile(client pb.FileTransferServiceClient, remoteFile, localFile strin
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	stream, err := client.Upload(context.Background())
+	stream, err := client.Upload(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to new upload stream: %w", err)
 	}
@@ -73,8 +73,8 @@ func uploadFile(client pb.FileTransferServiceClient, remoteFile, localFile strin
 	return nil
 }
 
-func downloadFile(client pb.FileTransferServiceClient, remoteFile string, localFile string) error {
-	stream, err := client.Download(context.Background(), &pb.FileDownloadRequest{
+func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remoteFile string, localFile string) error {
+	stream, err := client.Download(ctx, &pb.FileDownloadRequest{
 		Filename: remoteFile,
 	})
 	if err != nil {
@@ -114,8 +114,20 @@ func downloadFile(client pb.FileTransferServiceClient, remoteFile string, localF
 	return nil
 }
 
-func RunClient(src, dest string) error {
-	var transfer func(client pb.FileTransferServiceClient, src, dest string) error
+type transferFunc func(ctx context.Context, client pb.FileTransferServiceClient, src, dest string) error
+
+type Client struct {
+	Option *Option
+}
+
+func NewClient(opt *Option) *Client {
+	return &Client{
+		Option: opt,
+	}
+}
+
+func (c *Client) Run(ctx context.Context, src, dest string) error {
+	var transfer transferFunc
 	var remoteHost, remoteFile, localFile string
 
 	srcHost, srcFile := parseFilename(src)
@@ -140,7 +152,7 @@ func RunClient(src, dest string) error {
 		return fmt.Errorf("both src and dest are local or remote")
 	}
 
-	conn, err := grpc.Dial(remoteHost+":5000",
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", remoteHost, c.Option.Port),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -149,7 +161,7 @@ func RunClient(src, dest string) error {
 	defer conn.Close()
 	client := pb.NewFileTransferServiceClient(conn)
 
-	return transfer(client, remoteFile, localFile)
+	return transfer(ctx, client, remoteFile, localFile)
 }
 
 func parseFilename(filename string) (string, string) {
