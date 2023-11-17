@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package filetransfer;
+
+option go_package = "./proto";
+
+service FileTransferService {
+    // クライアントからサーバーへのファイル転送
+    rpc Upload(stream FileUploadRequest) returns (FileUploadResponse);
+
+    // サーバーからクライアントへのファイル転送
+    rpc Download(FileDownloadRequest) returns (stream FileDownloadResponse);
+}
+
+message FileUploadRequest {
+    string filename = 1; // アップロードするファイル名
+    bytes content = 2; // ファイルの内容
+    int64 size = 3; // ファイルサイズ
+}
+
+message FileUploadResponse {
+    string message = 1; // ステータスメッセージ
+}
+
+message FileDownloadRequest {
+    string filename = 1; // ダウンロードするファイル名
+}
+
+message FileDownloadResponse {
+    bytes content = 1; // ファイルの内容
+}
