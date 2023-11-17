@@ -1,4 +1,4 @@
-package filetransfer
+package grpcp
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"os"
 	"sync"
 
-	pb "github.com/fujiwara/grpc-stream-filetransfer/proto"
+	pb "github.com/fujiwara/grpcp/proto"
 	"google.golang.org/grpc"
 )
 
@@ -17,89 +17,106 @@ type server struct {
 	pb.UnimplementedFileTransferServiceServer
 }
 
+const (
+	StreamBufferSize = 4096
+)
+
+func newUploadResponse(msg string) *pb.FileUploadResponse {
+	return &pb.FileUploadResponse{Message: msg}
+}
+
 func (s *server) Upload(stream pb.FileTransferService_UploadServer) error {
-	// ファイル受信処理
-	var open sync.Once
+	if err := s.upload(stream); err != nil {
+		log.Printf("[error] %s", err)
+		return err
+	}
+	return nil
+}
+
+func (s *server) upload(stream pb.FileTransferService_UploadServer) error {
+	var once sync.Once
 	var f *os.File
-	defer func() {
-		if f != nil {
-			f.Close()
-		}
-	}()
-	var totalBytes int
+	var totalBytes, expectedSize int64
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
-			// ファイル受信完了
-			log.Printf("upload completed (%d bytes)", totalBytes)
-			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Upload received successfully"})
-		} else if err != nil {
-			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Failed to receive file"})
-		}
-		open.Do(func() {
-			log.Println("open file:", req.Filename)
-			f, err = os.OpenFile(req.Filename, os.O_WRONLY|os.O_CREATE, 0644)
-			if err != nil {
-				return
+			log.Printf("[info] upload completed (%d bytes)", totalBytes)
+			if totalBytes != expectedSize {
+				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", expectedSize, totalBytes)
 			}
+			return stream.SendAndClose(newUploadResponse("Upload received successfully"))
+		} else if err != nil {
+			return fmt.Errorf("failed to receive file: %w", err)
+		}
+		once.Do(func() {
+			f, err = os.OpenFile(req.Filename, os.O_WRONLY|os.O_CREATE, 0644)
+			expectedSize = req.Size
 		})
-		if err != nil {
-			log.Printf("Failed to open file: %s", err)
-			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Failed to open file"})
+		if err != nil || f == nil {
+			return fmt.Errorf("failed to open file: %w", err)
 		}
 		if n, err := f.Write(req.Content); err != nil {
-			log.Printf("Failed to write file: %s", err)
-			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Failed to write file"})
+			return fmt.Errorf("failed to write file: %w", err)
 		} else {
-			totalBytes += n
+			totalBytes += int64(n)
 		}
 	}
 }
 
 func (s *server) Download(req *pb.FileDownloadRequest, stream pb.FileTransferService_DownloadServer) error {
+	if err := s.download(req, stream); err != nil {
+		log.Printf("[error] %s", err)
+		return err
+	}
+	return nil
+}
+
+func (s *server) download(req *pb.FileDownloadRequest, stream pb.FileTransferService_DownloadServer) error {
 	f, err := os.OpenFile(req.Filename, os.O_RDONLY, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
 	st, err := f.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to stat file: %w", err)
 	}
+	expectedBytes := st.Size()
+	totalBytes := int64(0)
+	buf := make([]byte, StreamBufferSize)
 	for {
-		buf := make([]byte, 4096)
 		n, err := f.Read(buf)
 		if err == io.EOF {
-			// ファイル読み込み完了
-			break
+			log.Printf("[info] download completed (%d bytes)", totalBytes)
+			if totalBytes != expectedBytes {
+				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", expectedBytes, totalBytes)
+			}
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("failed to read file: %w", err)
 		}
-		if err != nil {
-			log.Println("Failed to read file:", err)
-			return err
-		}
-		// 読み込んだデータをクライアントに送信
 		if err := stream.Send(&pb.FileDownloadResponse{
 			Filename: req.Filename,
 			Content:  buf[:n],
-			Size:     st.Size(),
+			Size:     expectedBytes,
 		}); err != nil {
-			log.Println("Failed to send file:", err)
-			return err
+			return fmt.Errorf("failed to send file: %w", err)
 		}
+		totalBytes += int64(n)
 	}
-
-	return nil
 }
 
-func RunServer(ctx context.Context, opt *Option) {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", opt.Port))
+func RunServer(ctx context.Context, opt *Option) error {
+	addr := fmt.Sprintf(":%d", opt.Port)
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	log.Println("Starting server")
+	log.Println("[info] Starting server on", addr, "...")
 	pb.RegisterFileTransferServiceServer(s, &server{})
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("Failed to serve: %v", err)
+		return fmt.Errorf("failed to serve: %w", err)
 	}
+	return nil
 }

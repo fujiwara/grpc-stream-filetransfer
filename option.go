@@ -1,4 +1,4 @@
-package filetransfer
+package grpcp
 
 type Option struct {
 	Port int `json:"port"`

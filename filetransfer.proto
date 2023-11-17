@@ -1,37 +1,40 @@
 syntax = "proto3";
 
-package filetransfer;
+package grpcp;
 
 option go_package = "./proto";
 
 service FileTransferService {
-    // クライアントからサーバーへのファイル転送
     rpc Upload(stream FileUploadRequest) returns (FileUploadResponse);
 
-    // サーバーからクライアントへのファイル転送
     rpc Download(FileDownloadRequest) returns (stream FileDownloadResponse);
 }
 
 message FileUploadRequest {
-    string filename = 1; // アップロードするファイル名
-    bytes content = 2; // ファイルの内容
-    int64 size = 3; // ファイルサイズ
+    string filename = 1;
+    bytes content = 2;
+    int64 size = 3;
 }
 
 message FileUploadResponse {
-    int32 code = 1; // ステータスコード
-    string message = 2; // ステータスメッセージ
+    string message = 2;
 }
 
 message FileDownloadRequest {
-    string filename = 1; // ダウンロードするファイル名
+    string filename = 1;
 }
 
 message FileDownloadResponse {
-    int32 code = 1;
     string message = 2;
     string filename = 3;
     bytes content = 4;
     int64 size = 5;
+}
 
+message PingRequest {
+    string message = 1;
+}
+
+message PingResponse {
+    string message = 1;
 }

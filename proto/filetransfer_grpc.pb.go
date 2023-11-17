@@ -22,9 +22,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FileTransferServiceClient interface {
-	// クライアントからサーバーへのファイル転送
 	Upload(ctx context.Context, opts ...grpc.CallOption) (FileTransferService_UploadClient, error)
-	// サーバーからクライアントへのファイル転送
 	Download(ctx context.Context, in *FileDownloadRequest, opts ...grpc.CallOption) (FileTransferService_DownloadClient, error)
 }
 
@@ -37,7 +35,7 @@ func NewFileTransferServiceClient(cc grpc.ClientConnInterface) FileTransferServi
 }
 
 func (c *fileTransferServiceClient) Upload(ctx context.Context, opts ...grpc.CallOption) (FileTransferService_UploadClient, error) {
-	stream, err := c.cc.NewStream(ctx, &FileTransferService_ServiceDesc.Streams[0], "/filetransfer.FileTransferService/Upload", opts...)
+	stream, err := c.cc.NewStream(ctx, &FileTransferService_ServiceDesc.Streams[0], "/grpcp.FileTransferService/Upload", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +69,7 @@ func (x *fileTransferServiceUploadClient) CloseAndRecv() (*FileUploadResponse, e
 }
 
 func (c *fileTransferServiceClient) Download(ctx context.Context, in *FileDownloadRequest, opts ...grpc.CallOption) (FileTransferService_DownloadClient, error) {
-	stream, err := c.cc.NewStream(ctx, &FileTransferService_ServiceDesc.Streams[1], "/filetransfer.FileTransferService/Download", opts...)
+	stream, err := c.cc.NewStream(ctx, &FileTransferService_ServiceDesc.Streams[1], "/grpcp.FileTransferService/Download", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,9 +104,7 @@ func (x *fileTransferServiceDownloadClient) Recv() (*FileDownloadResponse, error
 // All implementations must embed UnimplementedFileTransferServiceServer
 // for forward compatibility
 type FileTransferServiceServer interface {
-	// クライアントからサーバーへのファイル転送
 	Upload(FileTransferService_UploadServer) error
-	// サーバーからクライアントへのファイル転送
 	Download(*FileDownloadRequest, FileTransferService_DownloadServer) error
 	mustEmbedUnimplementedFileTransferServiceServer()
 }
@@ -187,7 +183,7 @@ func (x *fileTransferServiceDownloadServer) Send(m *FileDownloadResponse) error 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var FileTransferService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "filetransfer.FileTransferService",
+	ServiceName: "grpcp.FileTransferService",
 	HandlerType: (*FileTransferServiceServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{

@@ -1,4 +1,4 @@
-package filetransfer
+package grpcp
 
 import (
 	"context"
@@ -6,10 +6,11 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
-	pb "github.com/fujiwara/grpc-stream-filetransfer/proto"
+	pb "github.com/fujiwara/grpcp/proto"
 	"github.com/schollz/progressbar/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -21,55 +22,57 @@ func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remote
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
-
 	st, err := file.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	// if remoteFile is directory, use localFile's basename
+	if strings.HasSuffix(remoteFile, "/") {
+		remoteFile = filepath.Join(remoteFile, filepath.Base(localFile))
 	}
 
 	stream, err := client.Upload(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to new upload stream: %w", err)
 	}
-	log.Printf("staring upload: %s -> %s", localFile, remoteFile)
-
+	log.Printf("staring upload: %s -> %s (%d bytes)", localFile, remoteFile, st.Size())
 	bar := progressbar.DefaultBytes(
 		st.Size(),
 		"uploading",
 	)
-	buf := make([]byte, 4096)
+	expectedBytes := st.Size()
+	var totalBytes int64
+	buf := make([]byte, StreamBufferSize)
 	for {
 		n, err := file.Read(buf)
 		if err == io.EOF {
-			// ファイル読み込み完了
+			log.Printf("[info] upload completed (%d bytes)", totalBytes)
+			if totalBytes != expectedBytes {
+				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", st.Size(), totalBytes)
+			}
 			break
-		}
-		if err != nil {
+		} else if err != nil {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
 
-		// 読み込んだデータをサーバーに送信
 		req := &pb.FileUploadRequest{
 			Filename: remoteFile,
 			Content:  buf[:n],
-			Size:     st.Size(),
+			Size:     expectedBytes,
 		}
-		bar.Write(req.Content)
 		if err := stream.Send(req); err != nil {
-			if err == io.EOF {
-				log.Println("EOF")
-				break
-			}
 			return fmt.Errorf("failed to send file: %w", err)
 		}
+		bar.Write(req.Content)
+		totalBytes += int64(n)
 	}
 
-	// アップロード終了をサーバーに通知
-	response, err := stream.CloseAndRecv()
+	res, err := stream.CloseAndRecv()
 	if err != nil {
 		return fmt.Errorf("failed to receive response: %w", err)
 	}
-	log.Printf("Upload response: %s", response.Message)
+	log.Printf("[info] server respone: %s", res.Message)
 	return nil
 }
 
@@ -79,6 +82,11 @@ func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remo
 	})
 	if err != nil {
 		return fmt.Errorf("failed to new download stream: %w", err)
+	}
+
+	// if localFile is directory, use remoteFile's basename
+	if st, err := os.Stat(localFile); err == nil && st.IsDir() {
+		localFile = filepath.Join(localFile, filepath.Base(remoteFile))
 	}
 
 	f, err := os.OpenFile(localFile, os.O_WRONLY|os.O_CREATE, 0644)
@@ -92,26 +100,32 @@ func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remo
 	var once sync.Once
 	var bar *progressbar.ProgressBar
 	var w io.Writer
+	var expectedBytes, totalBytes int64
 	for {
 		res, err := stream.Recv()
 		if err == io.EOF {
-			break
-		}
-		if err != nil {
+			log.Printf("[info] download completed (%d bytes)", totalBytes)
+			if totalBytes != expectedBytes {
+				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", expectedBytes, totalBytes)
+			}
+			return nil
+		} else if err != nil {
 			return fmt.Errorf("failed to receive response: %w", err)
 		}
 		once.Do(func() {
+			expectedBytes = res.Size
 			bar = progressbar.DefaultBytes(
 				res.Size,
 				"downloading",
 			)
 			w = io.MultiWriter(f, bar)
 		})
-		if _, err := w.Write(res.Content); err != nil {
+		if n, err := w.Write(res.Content); err != nil {
 			return fmt.Errorf("failed to write file: %w", err)
+		} else {
+			totalBytes += int64(n)
 		}
 	}
-	return nil
 }
 
 type transferFunc func(ctx context.Context, client pb.FileTransferServiceClient, src, dest string) error
@@ -126,7 +140,7 @@ func NewClient(opt *Option) *Client {
 	}
 }
 
-func (c *Client) Run(ctx context.Context, src, dest string) error {
+func (c *Client) Run(ctx context.Context, src, dest string, quiet bool) error {
 	var transfer transferFunc
 	var remoteHost, remoteFile, localFile string
 
@@ -148,11 +162,11 @@ func (c *Client) Run(ctx context.Context, src, dest string) error {
 		remoteFile = destFile
 		localFile = srcFile
 	} else {
-		// local to local and remote to remote are not supported
-		return fmt.Errorf("both src and dest are local or remote")
+		return fmt.Errorf("both src and dest are local")
 	}
 
-	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", remoteHost, c.Option.Port),
+	addr := fmt.Sprintf("%s:%d", remoteHost, c.Option.Port)
+	conn, err := grpc.Dial(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -160,6 +174,7 @@ func (c *Client) Run(ctx context.Context, src, dest string) error {
 	}
 	defer conn.Close()
 	client := pb.NewFileTransferServiceClient(conn)
+	log.Printf("[info] connected to %s", addr)
 
 	return transfer(ctx, client, remoteFile, localFile)
 }
