@@ -2,7 +2,7 @@
 
 ## Description
 
-This is a simple tool to copy files from a remote host to a local host using gRPC.
+This is a simple tool to copy files between local and remote hosts using gRPC stream.
 
 ## Usage
 
