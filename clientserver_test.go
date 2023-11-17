@@ -29,9 +29,9 @@ func runServer() {
 			panic("failed to run grpcp server:" + err.Error())
 		}
 	}()
-	client := grpcp.NewClient(&grpcp.ClientOption{Port: testPort})
+	client := grpcp.NewClient(&grpcp.ClientOption{Port: testPort, Host: testHost})
 	for i := 0; i < 3; i++ {
-		_, err := client.Ping(ctx, testHost)
+		_, err := client.Ping(ctx)
 		if err == nil {
 			return
 		}
@@ -66,6 +66,7 @@ func TestLocalToRemote(t *testing.T) {
 	testRemote := filepath.Join(dir, "remote.txt")
 
 	opt := &grpcp.ClientOption{
+		Host:  testHost,
 		Port:  testPort,
 		Quiet: true,
 	}

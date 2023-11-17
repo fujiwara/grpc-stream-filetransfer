@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	pb "github.com/fujiwara/grpcp/proto"
 	"google.golang.org/grpc"
@@ -111,6 +112,17 @@ func (s *server) download(req *pb.FileDownloadRequest, stream pb.FileTransferSer
 		}
 		totalBytes += int64(n)
 	}
+}
+
+func (s *server) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
+	log.Printf("[info] server shutdown requested")
+	go func() {
+		tm := time.NewTimer(time.Second)
+		<-tm.C
+		log.Printf("[info] server shutdown")
+		os.Exit(0)
+	}()
+	return &pb.ShutdownResponse{}, nil
 }
 
 func RunServer(ctx context.Context, opt *ServerOption) error {

@@ -25,6 +25,7 @@ type FileTransferServiceClient interface {
 	Upload(ctx context.Context, opts ...grpc.CallOption) (FileTransferService_UploadClient, error)
 	Download(ctx context.Context, in *FileDownloadRequest, opts ...grpc.CallOption) (FileTransferService_DownloadClient, error)
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
+	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error)
 }
 
 type fileTransferServiceClient struct {
@@ -110,6 +111,15 @@ func (c *fileTransferServiceClient) Ping(ctx context.Context, in *PingRequest, o
 	return out, nil
 }
 
+func (c *fileTransferServiceClient) Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*ShutdownResponse, error) {
+	out := new(ShutdownResponse)
+	err := c.cc.Invoke(ctx, "/grpcp.FileTransferService/Shutdown", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FileTransferServiceServer is the server API for FileTransferService service.
 // All implementations must embed UnimplementedFileTransferServiceServer
 // for forward compatibility
@@ -117,6 +127,7 @@ type FileTransferServiceServer interface {
 	Upload(FileTransferService_UploadServer) error
 	Download(*FileDownloadRequest, FileTransferService_DownloadServer) error
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
+	Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error)
 	mustEmbedUnimplementedFileTransferServiceServer()
 }
 
@@ -132,6 +143,9 @@ func (UnimplementedFileTransferServiceServer) Download(*FileDownloadRequest, Fil
 }
 func (UnimplementedFileTransferServiceServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedFileTransferServiceServer) Shutdown(context.Context, *ShutdownRequest) (*ShutdownResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Shutdown not implemented")
 }
 func (UnimplementedFileTransferServiceServer) mustEmbedUnimplementedFileTransferServiceServer() {}
 
@@ -211,6 +225,24 @@ func _FileTransferService_Ping_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FileTransferService_Shutdown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShutdownRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FileTransferServiceServer).Shutdown(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/grpcp.FileTransferService/Shutdown",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FileTransferServiceServer).Shutdown(ctx, req.(*ShutdownRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FileTransferService_ServiceDesc is the grpc.ServiceDesc for FileTransferService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -221,6 +253,10 @@ var FileTransferService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Ping",
 			Handler:    _FileTransferService_Ping_Handler,
+		},
+		{
+			MethodName: "Shutdown",
+			Handler:    _FileTransferService_Shutdown_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -142,8 +142,8 @@ func NewClient(opt *ClientOption) *Client {
 	}
 }
 
-func (c *Client) Ping(ctx context.Context, host string) (*pb.PingResponse, error) {
-	addr := fmt.Sprintf("%s:%d", host, c.Option.Port)
+func (c *Client) Ping(ctx context.Context) (*pb.PingResponse, error) {
+	addr := fmt.Sprintf("%s:%d", c.Option.Host, c.Option.Port)
 	conn, err := grpc.DialContext(ctx, addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
@@ -192,6 +192,20 @@ func (c *Client) Copy(ctx context.Context, src, dest string) error {
 	client := pb.NewFileTransferServiceClient(conn)
 
 	return transfer(ctx, client, remoteFile, localFile, c.Option)
+}
+
+func (c *Client) Shutdown(ctx context.Context) error {
+	addr := fmt.Sprintf("%s:%d", c.Option.Host, c.Option.Port)
+	conn, err := grpc.DialContext(ctx, addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to dial server: %w", err)
+	}
+	defer conn.Close()
+	client := pb.NewFileTransferServiceClient(conn)
+	_, err = client.Shutdown(ctx, &pb.ShutdownRequest{})
+	return err
 }
 
 func parseFilename(filename string) (string, string) {

@@ -6,6 +6,7 @@ type ServerOption struct {
 }
 
 type ClientOption struct {
-	Port int `json:"port"`
-	Quiet bool `json:"quiet"`
+	Host  string `json:"host"`
+	Port  int    `json:"port"`
+	Quiet bool   `json:"quiet"`
 }

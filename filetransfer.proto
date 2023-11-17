@@ -10,6 +10,8 @@ service FileTransferService {
     rpc Download(FileDownloadRequest) returns (stream FileDownloadResponse);
 
     rpc Ping(PingRequest) returns (PingResponse);
+
+    rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
 }
 
 message FileUploadRequest {
@@ -39,4 +41,10 @@ message PingRequest {
 
 message PingResponse {
     string message = 1;
+}
+
+message ShutdownRequest {
+}
+
+message ShutdownResponse {
 }
