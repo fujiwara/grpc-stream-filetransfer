@@ -19,7 +19,8 @@ message FileUploadRequest {
 }
 
 message FileUploadResponse {
-    string message = 1; // ステータスメッセージ
+    int32 code = 1; // ステータスコード
+    string message = 2; // ステータスメッセージ
 }
 
 message FileDownloadRequest {
@@ -27,5 +28,10 @@ message FileDownloadRequest {
 }
 
 message FileDownloadResponse {
-    bytes content = 1; // ファイルの内容
+    int32 code = 1;
+    string message = 2;
+    string filename = 3;
+    bytes content = 4;
+    int64 size = 5;
+
 }

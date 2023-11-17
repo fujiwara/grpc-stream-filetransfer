@@ -5,15 +5,11 @@ import (
 	"log"
 	"net"
 	"os"
-	"path/filepath"
 	"sync"
 
 	pb "github.com/fujiwara/grpc-stream-filetransfer/proto"
-	"github.com/schollz/progressbar/v3"
 	"google.golang.org/grpc"
 )
-
-var basedir = "/tmp"
 
 type server struct {
 	pb.UnimplementedFileTransferServiceServer
@@ -23,8 +19,6 @@ func (s *server) Upload(stream pb.FileTransferService_UploadServer) error {
 	// ファイル受信処理
 	var open sync.Once
 	var f *os.File
-	var bar *progressbar.ProgressBar
-	var w io.Writer
 	defer func() {
 		if f != nil {
 			f.Close()
@@ -40,23 +34,17 @@ func (s *server) Upload(stream pb.FileTransferService_UploadServer) error {
 			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Failed to receive file"})
 		}
 		open.Do(func() {
-			filename := filepath.Join(basedir, req.Filename)
-			log.Println("open file:", filename)
-			f, err = os.OpenFile(filename, os.O_WRONLY|os.O_CREATE, 0644)
+			log.Println("open file:", req.Filename)
+			f, err = os.OpenFile(req.Filename, os.O_WRONLY|os.O_CREATE, 0644)
 			if err != nil {
 				return
 			}
-			bar = progressbar.DefaultBytes(
-				req.Size,
-				"recieving",
-			)
-			w = io.MultiWriter(f, bar)
 		})
 		if err != nil {
 			log.Printf("Failed to open file: %s", err)
 			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Failed to open file"})
 		}
-		if _, err := w.Write(req.Content); err != nil {
+		if _, err := f.Write(req.Content); err != nil {
 			log.Printf("Failed to write file: %s", err)
 			return stream.SendAndClose(&pb.FileUploadResponse{Message: "Failed to write file"})
 		}
@@ -64,8 +52,37 @@ func (s *server) Upload(stream pb.FileTransferService_UploadServer) error {
 }
 
 func (s *server) Download(req *pb.FileDownloadRequest, stream pb.FileTransferService_DownloadServer) error {
-	// ファイル送信処理
-	// ここでファイル内容を読み込んでクライアントに送信する
+	f, err := os.OpenFile(req.Filename, os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	for {
+		buf := make([]byte, 4096)
+		n, err := f.Read(buf)
+		if err == io.EOF {
+			// ファイル読み込み完了
+			break
+		}
+		if err != nil {
+			log.Println("Failed to read file:", err)
+			return err
+		}
+		// 読み込んだデータをクライアントに送信
+		if err := stream.Send(&pb.FileDownloadResponse{
+			Filename: req.Filename,
+			Content:  buf[:n],
+			Size:     st.Size(),
+		}); err != nil {
+			log.Println("Failed to send file:", err)
+			return err
+		}
+	}
+
 	return nil
 }
 

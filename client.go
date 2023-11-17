@@ -6,7 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
+	"strings"
+	"sync"
 
 	pb "github.com/fujiwara/grpc-stream-filetransfer/proto"
 	"github.com/schollz/progressbar/v3"
@@ -14,8 +15,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func uploadFile(client pb.FileTransferServiceClient, filename string) error {
-	file, err := os.Open(filename)
+func uploadFile(client pb.FileTransferServiceClient, remoteFile, localFile string) error {
+	file, err := os.Open(localFile)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
@@ -30,8 +31,7 @@ func uploadFile(client pb.FileTransferServiceClient, filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed to new upload stream: %w", err)
 	}
-	log.Println("staring upload:", filename)
-	basename := filepath.Base(filename)
+	log.Printf("staring upload: %s -> %s", localFile, remoteFile)
 
 	bar := progressbar.DefaultBytes(
 		st.Size(),
@@ -50,7 +50,7 @@ func uploadFile(client pb.FileTransferServiceClient, filename string) error {
 
 		// 読み込んだデータをサーバーに送信
 		req := &pb.FileUploadRequest{
-			Filename: basename,
+			Filename: remoteFile,
 			Content:  buf[:n],
 			Size:     st.Size(),
 		}
@@ -73,18 +73,89 @@ func uploadFile(client pb.FileTransferServiceClient, filename string) error {
 	return nil
 }
 
-func RunClient(filename string) error {
-	conn, err := grpc.Dial("localhost:5000",
+func downloadFile(client pb.FileTransferServiceClient, remoteFile string, localFile string) error {
+	stream, err := client.Download(context.Background(), &pb.FileDownloadRequest{
+		Filename: remoteFile,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to new download stream: %w", err)
+	}
+
+	f, err := os.OpenFile(localFile, os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	log.Printf("staring download: %s -> %s", remoteFile, localFile)
+
+	var once sync.Once
+	var bar *progressbar.ProgressBar
+	var w io.Writer
+	for {
+		res, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to receive response: %w", err)
+		}
+		once.Do(func() {
+			bar = progressbar.DefaultBytes(
+				res.Size,
+				"downloading",
+			)
+			w = io.MultiWriter(f, bar)
+		})
+		if _, err := w.Write(res.Content); err != nil {
+			return fmt.Errorf("failed to write file: %w", err)
+		}
+	}
+	return nil
+}
+
+func RunClient(src, dest string) error {
+	var transfer func(client pb.FileTransferServiceClient, src, dest string) error
+	var remoteHost, remoteFile, localFile string
+
+	srcHost, srcFile := parseFilename(src)
+	destHost, destFile := parseFilename(dest)
+	if srcHost != "" && destHost != "" {
+		return fmt.Errorf("both src and dest are remote")
+	}
+	if srcHost != "" && destHost == "" {
+		// remote to local (download)
+		transfer = downloadFile
+		remoteHost = srcHost
+		remoteFile = srcFile
+		localFile = destFile
+	} else if srcHost == "" && destHost != "" {
+		// local to remote (upload)
+		transfer = uploadFile
+		remoteHost = destHost
+		remoteFile = destFile
+		localFile = srcFile
+	} else {
+		// local to local and remote to remote are not supported
+		return fmt.Errorf("both src and dest are local or remote")
+	}
+
+	conn, err := grpc.Dial(remoteHost+":5000",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to dial server: %w", err)
 	}
 	defer conn.Close()
-
 	client := pb.NewFileTransferServiceClient(conn)
-	if err := uploadFile(client, filename); err != nil {
-		return fmt.Errorf("failed to upload file: %w", err)
+
+	return transfer(client, remoteFile, localFile)
+}
+
+func parseFilename(filename string) (string, string) {
+	p := strings.SplitN(filename, ":", 2)
+	if len(p) == 1 {
+		return "", p[0] // local
 	}
-	return nil
+	return p[0], p[1] // remote
 }
