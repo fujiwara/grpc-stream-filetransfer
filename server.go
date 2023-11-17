@@ -54,6 +54,7 @@ func (s *server) upload(stream pb.FileTransferService_UploadServer) error {
 			return fmt.Errorf("failed to receive file: %w", err)
 		}
 		once.Do(func() {
+			log.Printf("[info] server accepting upload request: %s (%d bytes)", req.Filename, req.Size)
 			f, err = os.OpenFile(req.Filename, os.O_WRONLY|os.O_CREATE, 0644)
 			expectedSize = req.Size
 		})
@@ -77,6 +78,7 @@ func (s *server) Download(req *pb.FileDownloadRequest, stream pb.FileTransferSer
 }
 
 func (s *server) download(req *pb.FileDownloadRequest, stream pb.FileTransferService_DownloadServer) error {
+	log.Printf("[info] server accepting download request: %s", req.Filename)
 	f, err := os.OpenFile(req.Filename, os.O_RDONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)

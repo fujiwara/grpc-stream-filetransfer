@@ -3,3 +3,6 @@ build: gen-proto
 
 gen-proto:
 	protoc --go_out=. --go-grpc_out=. filetransfer.proto
+
+test: gen-proto
+	go test -v ./...
