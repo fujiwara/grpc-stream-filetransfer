@@ -1,11 +1,11 @@
 package grpcp
 
-type Option struct {
-	Port int `json:"port"`
+type ServerOption struct {
+	Port   int    `json:"port"`
+	Listen string `json:"listen"`
 }
 
-func NewDefaultOption() *Option {
-	return &Option{
-		Port: 5000,
-	}
+type ClientOption struct {
+	Port int `json:"port"`
+	Quiet bool `json:"quiet"`
 }

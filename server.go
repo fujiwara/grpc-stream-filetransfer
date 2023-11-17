@@ -106,8 +106,8 @@ func (s *server) download(req *pb.FileDownloadRequest, stream pb.FileTransferSer
 	}
 }
 
-func RunServer(ctx context.Context, opt *Option) error {
-	addr := fmt.Sprintf(":%d", opt.Port)
+func RunServer(ctx context.Context, opt *ServerOption) error {
+	addr := fmt.Sprintf("%s:%d", opt.Listen, opt.Port)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)

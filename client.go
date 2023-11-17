@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remoteFile, localFile string) error {
+func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remoteFile, localFile string, opt *ClientOption) error {
 	file, err := os.Open(localFile)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -36,11 +36,13 @@ func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remote
 	if err != nil {
 		return fmt.Errorf("failed to new upload stream: %w", err)
 	}
-	log.Printf("staring upload: %s -> %s (%d bytes)", localFile, remoteFile, st.Size())
-	bar := progressbar.DefaultBytes(
-		st.Size(),
-		"uploading",
-	)
+	log.Printf("[info] staring upload: %s -> %s (%d bytes)", localFile, remoteFile, st.Size())
+	var bar io.Writer
+	if opt.Quiet {
+		bar = io.Discard
+	} else {
+		bar = progressbar.DefaultBytes(st.Size(), "uploading")
+	}
 	expectedBytes := st.Size()
 	var totalBytes int64
 	buf := make([]byte, StreamBufferSize)
@@ -76,7 +78,7 @@ func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remote
 	return nil
 }
 
-func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remoteFile string, localFile string) error {
+func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remoteFile, localFile string, opt *ClientOption) error {
 	stream, err := client.Download(ctx, &pb.FileDownloadRequest{
 		Filename: remoteFile,
 	})
@@ -95,10 +97,9 @@ func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remo
 	}
 	defer f.Close()
 
-	log.Printf("staring download: %s -> %s", remoteFile, localFile)
+	log.Printf("[info] staring download: %s -> %s", remoteFile, localFile)
 
 	var once sync.Once
-	var bar *progressbar.ProgressBar
 	var w io.Writer
 	var expectedBytes, totalBytes int64
 	for {
@@ -114,11 +115,12 @@ func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remo
 		}
 		once.Do(func() {
 			expectedBytes = res.Size
-			bar = progressbar.DefaultBytes(
-				res.Size,
-				"downloading",
-			)
-			w = io.MultiWriter(f, bar)
+			if opt.Quiet {
+				w = f
+			} else {
+				bar := progressbar.DefaultBytes(res.Size, "downloading")
+				w = io.MultiWriter(f, bar)
+			}
 		})
 		if n, err := w.Write(res.Content); err != nil {
 			return fmt.Errorf("failed to write file: %w", err)
@@ -128,19 +130,19 @@ func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remo
 	}
 }
 
-type transferFunc func(ctx context.Context, client pb.FileTransferServiceClient, src, dest string) error
+type transferFunc func(ctx context.Context, client pb.FileTransferServiceClient, src, dest string, opt *ClientOption) error
 
 type Client struct {
-	Option *Option
+	Option *ClientOption
 }
 
-func NewClient(opt *Option) *Client {
+func NewClient(opt *ClientOption) *Client {
 	return &Client{
 		Option: opt,
 	}
 }
 
-func (c *Client) Run(ctx context.Context, src, dest string, quiet bool) error {
+func (c *Client) Run(ctx context.Context, src, dest string) error {
 	var transfer transferFunc
 	var remoteHost, remoteFile, localFile string
 
@@ -176,7 +178,7 @@ func (c *Client) Run(ctx context.Context, src, dest string, quiet bool) error {
 	client := pb.NewFileTransferServiceClient(conn)
 	log.Printf("[info] connected to %s", addr)
 
-	return transfer(ctx, client, remoteFile, localFile)
+	return transfer(ctx, client, remoteFile, localFile, c.Option)
 }
 
 func parseFilename(filename string) (string, string) {
