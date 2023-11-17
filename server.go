@@ -18,7 +18,7 @@ type server struct {
 }
 
 const (
-	StreamBufferSize = 4096
+	StreamBufferSize = 1024 * 1024
 )
 
 func newUploadResponse(msg string) *pb.FileUploadResponse {
