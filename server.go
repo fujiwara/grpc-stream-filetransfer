@@ -2,6 +2,7 @@ package grpcp
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -131,8 +132,29 @@ func RunServer(ctx context.Context, opt *ServerOption) error {
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
+	if opt.TLS {
+		var tlsConfig *tls.Config
+		var err error
+		if opt.CertFile == "" || opt.KeyFile == "" {
+			slog.Info("generating self-signed certificate")
+			tlsConfig, err = genSelfSignedTLS()
+			if err != nil {
+				return fmt.Errorf("failed to generate tls config: %w", err)
+			}
+		} else {
+			slog.Info("loading certificate", "cert", opt.CertFile, "key", opt.KeyFile)
+			tlsConfig, err = genTLS(opt.CertFile, opt.KeyFile)
+			if err != nil {
+				return fmt.Errorf("failed to generate tls config: %w", err)
+			}
+		}
+		lis = tls.NewListener(lis, tlsConfig)
+	} else {
+		slog.Warn("running without TLS")
+	}
+
 	s := grpc.NewServer()
-	slog.Info("starting server", "addr", addr)
+	slog.Info("starting server", "addr", addr, "tls", opt.TLS)
 	pb.RegisterFileTransferServiceServer(s, &server{})
 	if err := s.Serve(lis); err != nil {
 		return fmt.Errorf("failed to serve: %w", err)

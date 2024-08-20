@@ -2,6 +2,7 @@ package grpcp
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	pb "github.com/fujiwara/grpcp/proto"
 	"github.com/schollz/progressbar/v3"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -200,9 +202,17 @@ func (c *Client) Shutdown(ctx context.Context) error {
 }
 
 func (c *Client) newGRPCClient(addr string) (pb.FileTransferServiceClient, func() error, error) {
-	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	opts := []grpc.DialOption{}
+	if c.Option.TLS {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: c.Option.SkipVerify,
+		}
+		creds := credentials.NewTLS(tlsConfig)
+		opts = append(opts, grpc.WithTransportCredentials(creds))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to dial server: %w", err)
 	}
