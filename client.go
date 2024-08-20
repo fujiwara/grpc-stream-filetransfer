@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +36,7 @@ func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remote
 	if err != nil {
 		return fmt.Errorf("failed to new upload stream: %w", err)
 	}
-	log.Printf("[info] staring upload: %s -> %s (%d bytes)", localFile, remoteFile, st.Size())
+	slog.Info("staring upload", "local", localFile, "remote", remoteFile, "bytes", st.Size())
 	var bar io.Writer
 	if opt.Quiet {
 		bar = io.Discard
@@ -49,7 +49,7 @@ func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remote
 	for {
 		n, err := file.Read(buf)
 		if err == io.EOF {
-			log.Printf("[info] client upload completed (%d bytes)", totalBytes)
+			slog.Info("client upload completed", "bytes", totalBytes)
 			if totalBytes != expectedBytes {
 				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", st.Size(), totalBytes)
 			}
@@ -74,7 +74,7 @@ func uploadFile(ctx context.Context, client pb.FileTransferServiceClient, remote
 	if err != nil {
 		return fmt.Errorf("failed to receive response: %w", err)
 	}
-	log.Printf("[info] server respone: %s", res.Message)
+	slog.Info("server response", "message", res.Message)
 	return nil
 }
 
@@ -97,7 +97,7 @@ func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remo
 	}
 	defer f.Close()
 
-	log.Printf("[info] staring download: %s -> %s", remoteFile, localFile)
+	slog.Info("staring download", "remote", remoteFile, "local", localFile)
 
 	var once sync.Once
 	var w io.Writer
@@ -105,7 +105,7 @@ func downloadFile(ctx context.Context, client pb.FileTransferServiceClient, remo
 	for {
 		res, err := stream.Recv()
 		if err == io.EOF {
-			log.Printf("[info] client download completed (%d bytes)", totalBytes)
+			slog.Info("client download completed", "bytes", totalBytes)
 			if totalBytes != expectedBytes {
 				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", expectedBytes, totalBytes)
 			}
@@ -187,7 +187,7 @@ func (c *Client) Copy(ctx context.Context, src, dest string) error {
 	if err != nil {
 		return fmt.Errorf("failed to dial server: %w", err)
 	}
-	log.Printf("[info] connected to %s", addr)
+	slog.Info("connected", "remote", addr)
 	defer conn.Close()
 	client := pb.NewFileTransferServiceClient(conn)
 

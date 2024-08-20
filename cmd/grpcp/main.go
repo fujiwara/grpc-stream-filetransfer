@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/fujiwara/grpcp"
@@ -10,7 +10,7 @@ import (
 
 func main() {
 	if err := grpcp.RunCLI(context.Background()); err != nil {
-		log.Println("[error]", err)
+		slog.Error(err.Error())
 		os.Exit(1)
 	}
 }

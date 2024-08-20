@@ -3,13 +3,12 @@ package grpcp
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
+	"log/slog"
 
 	"github.com/alecthomas/kong"
-	"github.com/fatih/color"
-	"github.com/fujiwara/logutils"
 )
+
+var LogLevel = new(slog.LevelVar)
 
 type CLI struct {
 	Host string `name:"host" short:"h" default:"localhost" help:"host name"`
@@ -17,6 +16,7 @@ type CLI struct {
 
 	Server bool `name:"server" short:"s" help:"run as server"`
 	Quiet  bool `name:"quiet" short:"q" help:"quiet mode for client"`
+	Debug  bool `name:"debug" short:"d" help:"enable debug log for client and server"`
 	Kill   bool `name:"kill" short:"k" help:"kill server"`
 
 	Src  string `arg:"" optional:"" name:"src" short:"s" description:"source file path"`
@@ -28,9 +28,11 @@ func RunCLI(ctx context.Context) error {
 	kong.Parse(&cli)
 
 	if cli.Quiet {
-		setLogLevel("warn")
+		slog.SetLogLoggerLevel(slog.LevelWarn)
+	} else if cli.Debug {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
 	} else {
-		setLogLevel("info")
+		slog.SetLogLoggerLevel(slog.LevelInfo)
 	}
 
 	if cli.Server {
@@ -45,31 +47,16 @@ func RunCLI(ctx context.Context) error {
 			Port:  cli.Port,
 			Quiet: cli.Quiet,
 		}
-		clinet := NewClient(opt)
-		return clinet.Shutdown(ctx)
+		client := NewClient(opt)
+		return client.Shutdown(ctx)
 	} else if cli.Src != "" && cli.Dest != "" {
 		opt := &ClientOption{
 			Port:  cli.Port,
 			Quiet: cli.Quiet,
 		}
-		clinet := NewClient(opt)
-		return clinet.Copy(ctx, cli.Src, cli.Dest)
+		client := NewClient(opt)
+		return client.Copy(ctx, cli.Src, cli.Dest)
 	} else {
 		return fmt.Errorf("expected: grpcp <src> <dest> or grpcp --server")
 	}
-}
-
-func setLogLevel(level string) {
-	filter := &logutils.LevelFilter{
-		Levels: []logutils.LogLevel{"debug", "info", "warn", "error"},
-		ModifierFuncs: []logutils.ModifierFunc{
-			logutils.Color(color.FgCyan),   // debug
-			nil,                            // default
-			logutils.Color(color.FgYellow), // warn
-			logutils.Color(color.FgRed),    // error
-		},
-		MinLevel: logutils.LogLevel(level),
-		Writer:   os.Stderr,
-	}
-	log.SetOutput(filter)
 }
