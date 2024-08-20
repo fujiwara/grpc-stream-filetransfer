@@ -144,14 +144,11 @@ func NewClient(opt *ClientOption) *Client {
 
 func (c *Client) Ping(ctx context.Context) (*pb.PingResponse, error) {
 	addr := fmt.Sprintf("%s:%d", c.Option.Host, c.Option.Port)
-	conn, err := grpc.DialContext(ctx, addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	client, close, err := c.newGRPCClient(addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial server: %w", err)
+		return nil, err
 	}
-	defer conn.Close()
-	client := pb.NewFileTransferServiceClient(conn)
+	defer close()
 	return client.Ping(ctx, &pb.PingRequest{Message: "ping"})
 }
 
@@ -181,31 +178,36 @@ func (c *Client) Copy(ctx context.Context, src, dest string) error {
 	}
 
 	addr := fmt.Sprintf("%s:%d", remoteHost, c.Option.Port)
-	conn, err := grpc.DialContext(ctx, addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	client, close, err := c.newGRPCClient(addr)
 	if err != nil {
-		return fmt.Errorf("failed to dial server: %w", err)
+		return err
 	}
-	slog.Info("connected", "remote", addr)
-	defer conn.Close()
-	client := pb.NewFileTransferServiceClient(conn)
+	defer close()
 
 	return transfer(ctx, client, remoteFile, localFile, c.Option)
 }
 
 func (c *Client) Shutdown(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", c.Option.Host, c.Option.Port)
-	conn, err := grpc.DialContext(ctx, addr,
+	client, close, err := c.newGRPCClient(addr)
+	if err != nil {
+		return err
+	}
+	defer close()
+
+	_, err = client.Shutdown(ctx, &pb.ShutdownRequest{})
+	return err
+}
+
+func (c *Client) newGRPCClient(addr string) (pb.FileTransferServiceClient, func() error, error) {
+	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to dial server: %w", err)
+		return nil, nil, fmt.Errorf("failed to dial server: %w", err)
 	}
-	defer conn.Close()
 	client := pb.NewFileTransferServiceClient(conn)
-	_, err = client.Shutdown(ctx, &pb.ShutdownRequest{})
-	return err
+	return client, conn.Close, nil
 }
 
 func parseFilename(filename string) (string, string) {
