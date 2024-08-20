@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"sync"
@@ -23,7 +23,7 @@ var (
 )
 
 func (s *server) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
-	log.Printf("[info] ping message: %s", req.Message)
+	slog.Info("ping", "message", req.Message)
 	return &pb.PingResponse{Message: "pong"}, nil
 }
 
@@ -33,7 +33,7 @@ func newUploadResponse(msg string) *pb.FileUploadResponse {
 
 func (s *server) Upload(stream pb.FileTransferService_UploadServer) error {
 	if err := s.upload(stream); err != nil {
-		log.Printf("[error] %s", err)
+		slog.Error(err.Error())
 		return err
 	}
 	return nil
@@ -46,7 +46,7 @@ func (s *server) upload(stream pb.FileTransferService_UploadServer) error {
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
-			log.Printf("[info] server upload completed (%d bytes)", totalBytes)
+			slog.Info("server upload completed", "bytes", totalBytes)
 			if totalBytes != expectedSize {
 				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", expectedSize, totalBytes)
 			}
@@ -55,7 +55,7 @@ func (s *server) upload(stream pb.FileTransferService_UploadServer) error {
 			return fmt.Errorf("failed to receive file: %w", err)
 		}
 		once.Do(func() {
-			log.Printf("[info] server accepting upload request: %s (%d bytes)", req.Filename, req.Size)
+			slog.Info("server accepting upload request", "filename", req.Filename, "bytes", req.Size)
 			f, err = os.OpenFile(req.Filename, os.O_WRONLY|os.O_CREATE, 0644)
 			expectedSize = req.Size
 		})
@@ -72,14 +72,14 @@ func (s *server) upload(stream pb.FileTransferService_UploadServer) error {
 
 func (s *server) Download(req *pb.FileDownloadRequest, stream pb.FileTransferService_DownloadServer) error {
 	if err := s.download(req, stream); err != nil {
-		log.Printf("[error] %s", err)
+		slog.Error(err.Error())
 		return err
 	}
 	return nil
 }
 
 func (s *server) download(req *pb.FileDownloadRequest, stream pb.FileTransferService_DownloadServer) error {
-	log.Printf("[info] server accepting download request: %s", req.Filename)
+	slog.Info("server accepting download request", "filename", req.Filename)
 	f, err := os.OpenFile(req.Filename, os.O_RDONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
@@ -95,7 +95,7 @@ func (s *server) download(req *pb.FileDownloadRequest, stream pb.FileTransferSer
 	for {
 		n, err := f.Read(buf)
 		if err == io.EOF {
-			log.Printf("[info] server download completed (%d bytes)", totalBytes)
+			slog.Info("server download completed", "bytes", totalBytes)
 			if totalBytes != expectedBytes {
 				return fmt.Errorf("file size mismatch: expected %d bytes, got %d bytes", expectedBytes, totalBytes)
 			}
@@ -115,11 +115,11 @@ func (s *server) download(req *pb.FileDownloadRequest, stream pb.FileTransferSer
 }
 
 func (s *server) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.ShutdownResponse, error) {
-	log.Printf("[info] server shutdown requested")
+	slog.Info("server shutdown requested")
 	go func() {
 		tm := time.NewTimer(time.Second)
 		<-tm.C
-		log.Printf("[info] server shutdown")
+		slog.Info("server shutdown completed")
 		os.Exit(0)
 	}()
 	return &pb.ShutdownResponse{}, nil
@@ -132,7 +132,7 @@ func RunServer(ctx context.Context, opt *ServerOption) error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	s := grpc.NewServer()
-	log.Println("[info] Starting server on", addr, "...")
+	slog.Info("starting server", "addr", addr)
 	pb.RegisterFileTransferServiceServer(s, &server{})
 	if err := s.Serve(lis); err != nil {
 		return fmt.Errorf("failed to serve: %w", err)
