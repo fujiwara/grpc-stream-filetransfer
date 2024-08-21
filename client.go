@@ -2,6 +2,7 @@ package grpcp
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	pb "github.com/fujiwara/grpcp/proto"
 	"github.com/schollz/progressbar/v3"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -144,14 +146,11 @@ func NewClient(opt *ClientOption) *Client {
 
 func (c *Client) Ping(ctx context.Context) (*pb.PingResponse, error) {
 	addr := fmt.Sprintf("%s:%d", c.Option.Host, c.Option.Port)
-	conn, err := grpc.DialContext(ctx, addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	client, close, err := c.newGRPCClient(addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial server: %w", err)
+		return nil, err
 	}
-	defer conn.Close()
-	client := pb.NewFileTransferServiceClient(conn)
+	defer close()
 	return client.Ping(ctx, &pb.PingRequest{Message: "ping"})
 }
 
@@ -181,31 +180,44 @@ func (c *Client) Copy(ctx context.Context, src, dest string) error {
 	}
 
 	addr := fmt.Sprintf("%s:%d", remoteHost, c.Option.Port)
-	conn, err := grpc.DialContext(ctx, addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	client, close, err := c.newGRPCClient(addr)
 	if err != nil {
-		return fmt.Errorf("failed to dial server: %w", err)
+		return err
 	}
-	slog.Info("connected", "remote", addr)
-	defer conn.Close()
-	client := pb.NewFileTransferServiceClient(conn)
+	defer close()
 
 	return transfer(ctx, client, remoteFile, localFile, c.Option)
 }
 
 func (c *Client) Shutdown(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", c.Option.Host, c.Option.Port)
-	conn, err := grpc.DialContext(ctx, addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+	client, close, err := c.newGRPCClient(addr)
 	if err != nil {
-		return fmt.Errorf("failed to dial server: %w", err)
+		return err
 	}
-	defer conn.Close()
-	client := pb.NewFileTransferServiceClient(conn)
+	defer close()
+
 	_, err = client.Shutdown(ctx, &pb.ShutdownRequest{})
 	return err
+}
+
+func (c *Client) newGRPCClient(addr string) (pb.FileTransferServiceClient, func() error, error) {
+	opts := []grpc.DialOption{}
+	if c.Option.TLS {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: c.Option.SkipVerify,
+		}
+		creds := credentials.NewTLS(tlsConfig)
+		opts = append(opts, grpc.WithTransportCredentials(creds))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+	conn, err := grpc.NewClient(addr, opts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to dial server: %w", err)
+	}
+	client := pb.NewFileTransferServiceClient(conn)
+	return client, conn.Close, nil
 }
 
 func parseFilename(filename string) (string, string) {

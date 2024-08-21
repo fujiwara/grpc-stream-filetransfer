@@ -6,6 +6,10 @@ builds:
   - env:
       - CGO_ENABLED=0
     main: ./cmd/grpcp/main.go
+    ldflags:
+      - -s
+      - -w
+      - -extldflags "-static"
     goos:
       - darwin
       - linux
