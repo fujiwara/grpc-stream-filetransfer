@@ -22,9 +22,9 @@ type CLI struct {
 	Cert   string `name:"cert" help:"certificate file for server" type:"existingfile"`
 	Key    string `name:"key" help:"private key file for server" type:"existingfile"`
 
-	SkipVerify bool `name:"skip-verify" help:"skip TLS verification for client"`
-	Kill       bool `name:"kill" help:"send shutdown command to server"`
-	Ping       bool `name:"ping" help:"send ping message to server"`
+	VerifyTLSCert bool `name:"verify-tls-cert" default:"false" help:"TLS verification for client"`
+	Kill          bool `name:"kill" help:"send shutdown command to server"`
+	Ping          bool `name:"ping" help:"send ping message to server"`
 
 	Src  string `arg:"" optional:"" name:"src" short:"s" description:"source file path"`
 	Dest string `arg:"" optional:"" name:"dest" short:"d" description:"destination file path"`
@@ -36,7 +36,7 @@ func (c *CLI) ClientOption() *ClientOption {
 		Port:       c.Port,
 		Quiet:      c.Quiet,
 		TLS:        c.TLS,
-		SkipVerify: c.SkipVerify,
+		SkipVerify: !c.VerifyTLSCert,
 	}
 }
 
