@@ -81,7 +81,7 @@ func (s *server) Download(req *pb.FileDownloadRequest, stream pb.FileTransferSer
 
 func (s *server) download(req *pb.FileDownloadRequest, stream pb.FileTransferService_DownloadServer) error {
 	slog.Info("server accepting download request", "filename", req.Filename)
-	f, err := os.OpenFile(req.Filename, os.O_RDONLY, 0644)
+	f, err := os.Open(req.Filename)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
@@ -126,34 +126,40 @@ func (s *server) Shutdown(ctx context.Context, req *pb.ShutdownRequest) (*pb.Shu
 	return &pb.ShutdownResponse{}, nil
 }
 
-func RunServer(ctx context.Context, opt *ServerOption) error {
-	addr := fmt.Sprintf("%s:%d", opt.Listen, opt.Port)
+func newListener(addr string, opt *ServerOption) (net.Listener, error) {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
+		return nil, fmt.Errorf("failed to listen: %w", err)
 	}
-	if opt.TLS {
-		var tlsConfig *tls.Config
-		var err error
-		if opt.CertFile == "" || opt.KeyFile == "" {
-			slog.Info("generating self-signed certificate")
-			tlsConfig, err = genSelfSignedTLS()
-			if err != nil {
-				return fmt.Errorf("failed to generate tls config: %w", err)
-			}
-		} else {
-			slog.Info("loading certificate", "cert", opt.CertFile, "key", opt.KeyFile)
-			tlsConfig, err = genTLS(opt.CertFile, opt.KeyFile)
-			if err != nil {
-				return fmt.Errorf("failed to generate tls config: %w", err)
-			}
-		}
-		lis = tls.NewListener(lis, tlsConfig)
-	} else {
-		slog.Warn("running without TLS")
+	if !opt.TLS {
+		slog.Warn("running server without TLS")
+		return lis, nil
 	}
 
+	var tlsConfig *tls.Config
+	if opt.CertFile == "" || opt.KeyFile == "" {
+		slog.Info("generating self-signed certificate")
+		tlsConfig, err = genSelfSignedTLS()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate tls config: %w", err)
+		}
+	} else {
+		slog.Info("loading certificate", "cert", opt.CertFile, "key", opt.KeyFile)
+		tlsConfig, err = genTLS(opt.CertFile, opt.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate tls config: %w", err)
+		}
+	}
+	return tls.NewListener(lis, tlsConfig), nil
+}
+
+func RunServer(ctx context.Context, opt *ServerOption) error {
 	s := grpc.NewServer()
+	addr := fmt.Sprintf("%s:%d", opt.Listen, opt.Port)
+	lis, err := newListener(addr, opt)
+	if err != nil {
+		return fmt.Errorf("failed to create listener: %w", err)
+	}
 	slog.Info("starting server", "addr", addr, "tls", opt.TLS)
 	pb.RegisterFileTransferServiceServer(s, &server{})
 	if err := s.Serve(lis); err != nil {

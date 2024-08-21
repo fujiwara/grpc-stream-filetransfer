@@ -32,13 +32,13 @@ func genSelfSignedTLS() (*tls.Config, error) {
 		os.RemoveAll(dir)
 	}()
 
-	// プライベートキーを生成
+	// generate private key
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate private key: %w", err)
 	}
 
-	// 証明書のテンプレートを作成
+	// generate certificate template
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
@@ -51,14 +51,15 @@ func genSelfSignedTLS() (*tls.Config, error) {
 		BasicConstraintsValid: true,
 	}
 
-	// 証明書を自己署名で作成
+	// generate certificate self-signed
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create certificate: %w", err)
 	}
 
-	// PEM形式でプライベートキーを書き出し
-	keyOut, err := os.Create(filepath.Join(dir, "server.key"))
+	// write certificate in PEM format
+	keyFile := filepath.Join(dir, "server.key")
+	keyOut, err := os.Create(keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open server.key for writing: %w", err)
 	}
@@ -69,21 +70,14 @@ func genSelfSignedTLS() (*tls.Config, error) {
 	pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
 	keyOut.Close()
 
-	// PEM形式で証明書を書き出し
-	certOut, err := os.Create(filepath.Join(dir, "server.crt"))
+	// write certificate in PEM format
+	certFile := filepath.Join(dir, "server.crt")
+	certOut, err := os.Create(certFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open server.crt for writing: %w", err)
 	}
 	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 	certOut.Close()
 
-	// TLS設定を使用してサーバーを起動する場合の例
-	cert, err := tls.LoadX509KeyPair(
-		filepath.Join(dir, "server.crt"),
-		filepath.Join(dir, "server.key"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load key pair: %w", err)
-	}
-	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
+	return genTLS(certFile, keyFile)
 }
