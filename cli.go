@@ -14,25 +14,45 @@ type CLI struct {
 	Host string `name:"host" short:"h" default:"localhost" help:"host name"`
 	Port int    `name:"port" short:"p" default:"8022" help:"port number"`
 
-	Quiet bool `name:"quiet" short:"q" help:"quiet mode for client"`
-	Debug bool `name:"debug" short:"d" help:"enable debug log for client and server"`
+	Quiet bool `name:"quiet" short:"q" help:"quiet mode"`
+	Debug bool `name:"debug" short:"d" help:"enable debug log"`
+	TLS   bool `name:"tls" negatable:"" default:"true" help:"enable TLS (default: true)"`
 
 	Server bool   `name:"server" short:"s" help:"run as server"`
-	TLS    bool   `name:"tls" negatable:"" default:"true" help:"enable TLS for server"`
-	Cert   string `name:"cert" help:"certificate file for server"`
-	Key    string `name:"key" help:"private key file for server"`
+	Cert   string `name:"cert" help:"certificate file for server" type:"existingfile"`
+	Key    string `name:"key" help:"private key file for server" type:"existingfile"`
 
 	SkipVerify bool `name:"skip-verify" help:"skip TLS verification for client"`
-
-	Kill bool `name:"kill" short:"k" help:"kill server"`
+	Kill       bool `name:"kill" help:"send shutdown command to server"`
+	Ping       bool `name:"ping" help:"send ping message to server"`
 
 	Src  string `arg:"" optional:"" name:"src" short:"s" description:"source file path"`
 	Dest string `arg:"" optional:"" name:"dest" short:"d" description:"destination file path"`
 }
 
+func (c *CLI) ClientOption() *ClientOption {
+	return &ClientOption{
+		Host:       c.Host,
+		Port:       c.Port,
+		Quiet:      c.Quiet,
+		TLS:        c.TLS,
+		SkipVerify: c.SkipVerify,
+	}
+}
+
+func (c *CLI) ServerOption() *ServerOption {
+	return &ServerOption{
+		Port:     c.Port,
+		Listen:   c.Host,
+		TLS:      c.TLS,
+		CertFile: c.Cert,
+		KeyFile:  c.Key,
+	}
+}
+
 func RunCLI(ctx context.Context) error {
-	var cli CLI
-	kong.Parse(&cli)
+	cli := &CLI{}
+	kong.Parse(cli)
 
 	if cli.Quiet {
 		slog.SetLogLoggerLevel(slog.LevelWarn)
@@ -42,33 +62,22 @@ func RunCLI(ctx context.Context) error {
 		slog.SetLogLoggerLevel(slog.LevelInfo)
 	}
 
-	if cli.Server {
-		opt := &ServerOption{
-			Port:   cli.Port,
-			Listen: cli.Host,
-			TLS:    cli.TLS,
+	client := NewClient(cli.ClientOption())
+	switch {
+	case cli.Server:
+		return RunServer(ctx, cli.ServerOption())
+	case cli.Ping:
+		resp, err := client.Ping(ctx)
+		if err != nil {
+			return err
 		}
-		return RunServer(ctx, opt)
-	} else if cli.Kill {
-		opt := &ClientOption{
-			Host:       cli.Host,
-			Port:       cli.Port,
-			Quiet:      cli.Quiet,
-			TLS:        cli.TLS,
-			SkipVerify: cli.SkipVerify,
-		}
-		client := NewClient(opt)
+		slog.Info("ping", "message", resp.Message)
+		return nil
+	case cli.Kill:
 		return client.Shutdown(ctx)
-	} else if cli.Src != "" && cli.Dest != "" {
-		opt := &ClientOption{
-			Port:       cli.Port,
-			Quiet:      cli.Quiet,
-			TLS:        cli.TLS,
-			SkipVerify: cli.SkipVerify,
-		}
-		client := NewClient(opt)
+	case cli.Src != "" && cli.Dest != "":
 		return client.Copy(ctx, cli.Src, cli.Dest)
-	} else {
-		return fmt.Errorf("expected: grpcp <src> <dest> or grpcp --server")
+	default:
+		return fmt.Errorf("expected: grpcp <src> <dest> or grpcp --server. see --help")
 	}
 }
